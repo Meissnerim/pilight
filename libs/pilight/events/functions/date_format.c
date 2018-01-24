@@ -48,6 +48,8 @@ static int run(struct rules_t *obj, struct JsonNode *arguments, char **ret, enum
 	struct tm tm;
 	char *p = *ret, *datetime = NULL, *format = NULL;
 
+	memset(&tm, 0, sizeof(struct tm));
+
 	if(childs == NULL) {
 		logprintf(LOG_ERR, "DATE_FORMAT requires at least two parameters e.g. DATE_FORMAT(datetime, %Y-%m-%d)");
 		return -1;
@@ -126,7 +128,7 @@ static int run(struct rules_t *obj, struct JsonNode *arguments, char **ret, enum
 	int second = tm.tm_sec;
 	int weekday = tm.tm_wday;
 
-	datefix(&year, &month, &day, &hour, &minute, &second);
+	datefix(&year, &month, &day, &hour, &minute, &second, &weekday);
 
 	tm.tm_year = year-1900;
 	tm.tm_mon = month-1;
@@ -135,6 +137,11 @@ static int run(struct rules_t *obj, struct JsonNode *arguments, char **ret, enum
 	tm.tm_min = minute;
 	tm.tm_sec = second;
 	tm.tm_wday = weekday;
+
+	if(mktime(&tm) < 0) {
+		logprintf(LOG_ERR, "DATE_FORMAT error on mktime()");
+		return -1;
+	}
 
 	strftime(p, BUFFER_SIZE, childs->string_, &tm);
 

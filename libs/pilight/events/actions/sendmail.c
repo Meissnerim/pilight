@@ -34,10 +34,6 @@
 #include "../../core/mail.h"
 #include "sendmail.h"
 
-#ifndef _WIN32
-	#include <regex.h>
-#endif
-
 //check arguments and settings
 static int checkArguments(struct rules_actions_t *obj) {
 	struct JsonNode *jsubject = NULL;
@@ -48,10 +44,6 @@ static int checkArguments(struct rules_actions_t *obj) {
 	struct JsonNode *jchild = NULL;
 	char *stmp = NULL;
 	int nrvalues = 0, itmp = 0;
-#if !defined(__FreeBSD__) && !defined(_WIN32)
-	regex_t regex;
-	int reti;
-#endif
 	jsubject = json_find_member(obj->parsedargs, "SUBJECT");
 	jmessage = json_find_member(obj->parsedargs, "MESSAGE");
 	jto = json_find_member(obj->parsedargs, "TO");
@@ -92,6 +84,11 @@ static int checkArguments(struct rules_actions_t *obj) {
 		logprintf(LOG_ERR, "sendmail action \"MESSAGE\" only takes one argument");
 		return -1;
 	}
+	jval = json_find_element(jvalues, 0);
+	if(jval->tag == JSON_STRING && strcmp(jval->string_, ".") == 0) {
+		logprintf(LOG_ERR, "sendmail action \"MESSAGE\" cannot be a single dot");
+		return -1;
+	}
 	nrvalues = 0;
 	if((jvalues = json_find_member(jto, "value")) != NULL) {
 		jchild = json_first_child(jvalues);
@@ -108,22 +105,9 @@ static int checkArguments(struct rules_actions_t *obj) {
 	if(jval->tag != JSON_STRING || jval->string_ == NULL) {
 		logprintf(LOG_ERR, "sendmail action \"TO\" must contain an e-mail address");
 		return -1;
-	} else if(strlen(jval->string_) > 0) {
-#if !defined(__FreeBSD__) && !defined(_WIN32)
-		char validate[] = "^[a-zA-Z0-9_.]+@[a-zA-Z0-9]+\\.+[a-zA-Z0-9]{2,3}$";
-		reti = regcomp(&regex, validate, REG_EXTENDED);
-		if(reti) {
-			logprintf(LOG_ERR, "could not compile regex for \"TO\"");
-			return -1;
-		}
-		reti = regexec(&regex, jval->string_, 0, NULL, 0);
-		if(reti == REG_NOMATCH || reti != 0) {
-			logprintf(LOG_ERR, "sendmail action \"TO\" must contain an e-mail address");
-			regfree(&regex);
-			return -1;
-		}
-		regfree(&regex);
-#endif
+	} else if(strlen(jval->string_) > 0 && check_email_addr(jval->string_, 0, 0) < 0) {
+		logprintf(LOG_ERR, "sendmail action \"TO\" must contain an e-mail address");
+		return -1;
 	}
 	// Check if mandatory settings are present in config
 	if(settings_find_string("smtp-host", &stmp) != EXIT_SUCCESS) {
@@ -149,6 +133,19 @@ static int checkArguments(struct rules_actions_t *obj) {
 	return 0;
 }
 
+static void callback(int status, struct mail_t *mail) {
+	if(status == 0) {
+		logprintf(LOG_INFO, "successfully sent sendmail action message with subject \"%s\" to %s", mail->subject, mail->to);
+	} else {
+		logprintf(LOG_NOTICE, "failed to send sendmail action message with subject \"%s\" to %s", mail->subject, mail->to);
+	}
+	FREE(mail->from);
+	FREE(mail->to);
+	FREE(mail->message);
+	FREE(mail->subject);
+	FREE(mail);
+}
+
 static void *thread(void *param) {
 	struct rules_actions_t *pth = (struct rules_actions_t *)param;
 	struct JsonNode *arguments = pth->parsedargs;
@@ -164,9 +161,14 @@ static void *thread(void *param) {
 
 	action_sendmail->nrthreads++;
 
-	struct mail_t mail;
-	char *shost = NULL, *suser = NULL, *spassword = NULL;
-	int sport = 0;
+	struct mail_t *mail = MALLOC(sizeof(struct mail_t));
+	char *shost = NULL, *suser = NULL;
+	char *spassword = NULL, *sfrom = NULL;
+	int sport = 0, ssl = 0;
+
+	if(mail == NULL) {
+		OUT_OF_MEMORY /*LCOV_EXCL_LINE*/
+	}
 
 	jmessage = json_find_member(arguments, "MESSAGE");
 	jsubject = json_find_member(arguments, "SUBJECT");
@@ -184,18 +186,28 @@ static void *thread(void *param) {
 				jval1->tag == JSON_STRING && jval2->tag == JSON_STRING && jval3->tag == JSON_STRING) {
 
 				//smtp settings
-				settings_find_string("smtp-sender", &mail.from);
+				settings_find_string("smtp-sender", &sfrom);
 				settings_find_string("smtp-host", &shost);
 				settings_find_number("smtp-port", &sport);
 				settings_find_string("smtp-user", &suser);
 				settings_find_string("smtp-password", &spassword);
+				settings_find_number("smtp-ssl", &ssl);
 
-				mail.subject = jval1->string_;
-				mail.message = jval2->string_;
-				mail.to = jval3->string_;
+				if((mail->from = STRDUP(sfrom)) == NULL) {
+					OUT_OF_MEMORY
+				}
+				if((mail->subject = STRDUP(jval1->string_)) == NULL) {
+					OUT_OF_MEMORY
+				}
+				if((mail->message = STRDUP(jval2->string_)) == NULL) {
+					OUT_OF_MEMORY
+				}
+				if((mail->to = STRDUP(jval3->string_)) == NULL) {
+					OUT_OF_MEMORY
+				}
 
-				if(sendmail(shost, suser, spassword, sport, &mail) != 0) {
-					logprintf(LOG_ERR, "Sendmail failed to send message \"%s\"", jval2->string_);
+				if(sendmail(shost, suser, spassword, sport, ssl, mail, callback) != 0) {
+					callback(-1, mail);
 				}
 			}
 		}

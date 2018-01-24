@@ -24,6 +24,7 @@ typedef enum {
 	NONE = 0,
 	RF433,
 	RF868,
+	RFIR,
 	SENSOR,
 	HWRELAY,
 	API
@@ -33,6 +34,7 @@ typedef enum {
 	COMNONE = 0,
 	COMOOK,
 	COMPLSTRAIN,
+	COMAPI
 } communication_t;
 
 #include <pthread.h>
@@ -60,13 +62,22 @@ typedef struct hardware_t {
 	communication_t comtype;
 	struct options_t *options;
 
+	int minrawlen;
+	int maxrawlen;
+	int mingaplen;
+	int maxgaplen;
+
 	unsigned short (*init)(void);
 	unsigned short (*deinit)(void);
 	union {
 		int (*receiveOOK)(void);
+		void *(*receiveAPI)(void *param);
 		int (*receivePulseTrain)(struct rawcode_t *r);
 	};
-	int (*send)(int *code, int rawlen, int repeats);
+	union {
+		int (*sendOOK)(int *code, int rawlen, int repeats);
+		int (*sendAPI)(struct JsonNode *code);
+	};
 	int (*gc)(void);
 	unsigned short (*settings)(JsonNode *json);
 	struct hardware_t *next;

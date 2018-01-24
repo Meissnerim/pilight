@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <wiringx.h>
 
 #ifndef _WIN32
 	#include <regex.h>
@@ -34,7 +35,6 @@
 #include "../core/common.h"
 #include "../core/json.h"
 #include "../core/log.h"
-#include "../../wiringx/wiringX.h"
 
 #include "settings.h"
 
@@ -197,22 +197,31 @@ static int settings_parse(JsonNode *root) {
 			|| strcmp(jsettings->key, "firmware-gpio-sck") == 0
 			|| strcmp(jsettings->key, "firmware-gpio-mosi") == 0
 			|| strcmp(jsettings->key, "firmware-gpio-miso") == 0) {
-			if(wiringXSupported() == 0) {
-				if(wiringXSetup() != 0) {
-					have_error = 1;
-					goto clear;
-				}
-			}
+#if !defined(__arm__) || !defined(__mips__)
+			return -1;
+#endif
 			if(jsettings->tag != JSON_NUMBER) {
 				logprintf(LOG_ERR, "config setting \"%s\" must contain a number larger than 0", jsettings->key);
-				have_error = 1;
-				goto clear;
-			} else if((wiringXSupported() == 0 && wiringXValidGPIO((int)jsettings->number_) != 0) || wiringXSupported() != 0) {
+				return -1;
+			} else if(wiringXValidGPIO((int)jsettings->number_) != 0) {
 				logprintf(LOG_ERR, "config setting \"%s\" must contain a valid GPIO number", jsettings->key);
-				have_error = 1;
-				goto clear;
+				return -1;
+			}
+		} else if(strcmp(jsettings->key, "gpio-platform") == 0) {
+			if(jsettings->tag != JSON_STRING) {
+				logprintf(LOG_ERR, "config setting \"%s\" must contain a supported gpio platform", jsettings->key);
+				return -1;
+			} else if(jsettings->string_ == NULL) {
+				logprintf(LOG_ERR, "config setting \"%s\" must contain a supported gpio platform", jsettings->key);
+				return -1;
 			} else {
-				settings_add_number(jsettings->key, (int)jsettings->number_);
+				if(strcmp(jsettings->string_, "none") != 0) {
+					if(wiringXSetup(jsettings->string_, logprintf1) != 0) {
+						logprintf(LOG_ERR, "config setting \"%s\" must contain a supported gpio platform", jsettings->key);
+						return -1;
+					}
+				}
+				settings_add_string(jsettings->key, jsettings->string_);
 			}
 		} else if(strcmp(jsettings->key, "standalone") == 0 ||
 							strcmp(jsettings->key, "watchdog-enable") == 0 ||
@@ -240,17 +249,17 @@ static int settings_parse(JsonNode *root) {
 			} else {
 				settings_add_number(jsettings->key, (int)jsettings->number_);
 			}
+		} else if(strcmp(jsettings->key, "log-file") == 0
 #ifndef _WIN32
-		} else if(strcmp(jsettings->key, "pid-file") == 0 || strcmp(jsettings->key, "log-file") == 0) {
-#else
-		} else if(strcmp(jsettings->key, "log-file") == 0) {
+			|| strcmp(jsettings->key, "pid-file") == 0
 #endif
+			) {
 			if(jsettings->tag != JSON_STRING) {
-				logprintf(LOG_ERR, "config setting \"%s\" must contain an existing path", jsettings->key);
+				logprintf(LOG_ERR, "config setting \"%s\" must contain an existing file", jsettings->key);
 				have_error = 1;
 				goto clear;
-			} else if(!jsettings->string_) {
-				logprintf(LOG_ERR, "config setting \"%s\" must contain an existing file path", jsettings->key);
+			} else if(jsettings->string_ == NULL) {
+				logprintf(LOG_ERR, "config setting \"%s\" must contain an existing file", jsettings->key);
 				have_error = 1;
 				goto clear;
 			} else {
@@ -298,8 +307,7 @@ static int settings_parse(JsonNode *root) {
 				settings_add_string(jsettings->key, jsettings->string_);
 			}
 #ifdef WEBSERVER
-
-#ifdef WEBSERVER_HTTPS
+	#ifdef WEBSERVER_HTTPS
 		} else if(strcmp(jsettings->key, "webserver-https-port") == 0) {
 			if(jsettings->tag != JSON_NUMBER) {
 				logprintf(LOG_ERR, "config setting \"%s\" must contain a number larget than 0", jsettings->key);
@@ -310,10 +318,10 @@ static int settings_parse(JsonNode *root) {
 				have_error = 1;
 				goto clear;
 			} else {
-				web_ssl_port = (int)jsettings->number_;
+				web_port = (int)jsettings->number_;
 				settings_add_number(jsettings->key, (int)jsettings->number_);
 			}
-#endif
+	#endif
 		} else if(strcmp(jsettings->key, "webserver-http-port") == 0) {
 			if(jsettings->tag != JSON_NUMBER) {
 				logprintf(LOG_ERR, "config setting \"%s\" must contain a number larget than 0", jsettings->key);
@@ -369,22 +377,6 @@ static int settings_parse(JsonNode *root) {
 			} else {
 				settings_add_number(jsettings->key, (int)jsettings->number_);
 			}
-#ifndef _WIN32
-		} else if(strcmp(jsettings->key, "webserver-user") == 0) {
-			if(jsettings->tag != JSON_STRING) {
-				logprintf(LOG_ERR, "config setting \"%s\" must contain a valid system user", jsettings->key);
-				have_error = 1;
-				goto clear;
-			} else if(jsettings->string_ || strlen(jsettings->string_) > 0) {
-				if(name2uid(jsettings->string_) == -1) {
-					logprintf(LOG_ERR, "config setting \"%s\" must contain a valid system user", jsettings->key);
-					have_error = 1;
-					goto clear;
-				} else {
-					settings_add_string(jsettings->key, jsettings->string_);
-				}
-			}
-#endif
 		} else if(strcmp(jsettings->key, "webserver-authentication") == 0 && jsettings->tag == JSON_ARRAY) {
 			JsonNode *jtmp = json_first_child(jsettings);
 			unsigned short i = 0;
@@ -449,8 +441,7 @@ static int settings_parse(JsonNode *root) {
 				settings_add_string(jsettings->key, jsettings->string_);
 			}
 #ifdef EVENTS
-		} else if(strcmp(jsettings->key, "smtp-sender") == 0 ||
-					strcmp(jsettings->key, "smtp-user") == 0) {
+		} else if(strcmp(jsettings->key, "smtp-sender") == 0) {
 			if(jsettings->tag != JSON_STRING) {
 				logprintf(LOG_ERR, "config setting \"%s\" must contain an e-mail address", jsettings->key);
 				have_error = 1;
@@ -459,25 +450,36 @@ static int settings_parse(JsonNode *root) {
 				logprintf(LOG_ERR, "config setting \"%s\" must contain an e-mail address", jsettings->key);
 				have_error = 1;
 				goto clear;
-			} else if(strlen(jsettings->string_) > 0) {
-#if !defined(__FreeBSD__) && !defined(_WIN32)
-				char validate[] = "^[a-zA-Z0-9_.]+@([a-zA-Z0-9]+\\.)+([a-zA-Z0-9]{2,3}){1,2}$";
-				reti = regcomp(&regex, validate, REG_EXTENDED);
-				if(reti) {
-					logprintf(LOG_ERR, "could not compile regex for %s", jsettings->key);
-					have_error = 1;
-					goto clear;
-				}
-				reti = regexec(&regex, jsettings->string_, 0, NULL, 0);
-				if(reti == REG_NOMATCH || reti != 0) {
-					logprintf(LOG_ERR, "config setting \"%s\" must contain an e-mail address", jsettings->key);
-					have_error = 1;
-					regfree(&regex);
-					goto clear;
-				}
-				regfree(&regex);
-#endif
-			settings_add_string(jsettings->key, jsettings->string_);
+			} else if(strlen(jsettings->string_) > 0 && check_email_addr(jsettings->string_, 0, 0) < 0) {
+				logprintf(LOG_ERR, "config setting \"%s\" must contain an e-mail address", jsettings->key);
+				have_error = 1;
+				goto clear;
+			} else {
+				settings_add_string(jsettings->key, jsettings->string_);
+			}
+		} else if(strcmp(jsettings->key, "smtp-ssl") == 0) {
+			if(jsettings->tag != JSON_NUMBER) {
+				logprintf(LOG_ERR, "config setting \"%s\" must be either 0 or 1", jsettings->key);
+				have_error = 1;
+				goto clear;
+			} else if(jsettings->number_ < 0 || jsettings->number_ > 1) {
+				logprintf(LOG_ERR, "config setting \"%s\" must be either 0 or 1", jsettings->key);
+				have_error = 1;
+				goto clear;
+			} else {
+				settings_add_number(jsettings->key, (int)jsettings->number_);
+			}
+		} else if(strcmp(jsettings->key, "smtp-user") == 0) {
+			if(jsettings->tag != JSON_STRING) {
+				logprintf(LOG_ERR, "config setting \"%s\" must contain a user id", jsettings->key);
+				have_error = 1;
+				goto clear;
+			} else if(jsettings->string_ == NULL) {
+				logprintf(LOG_ERR, "config setting \"%s\" must contain a user id", jsettings->key);
+				have_error = 1;
+				goto clear;
+			} else {
+				settings_add_string(jsettings->key, jsettings->string_);
 			}
 		} else if(strcmp(jsettings->key, "smtp-password") == 0) {
 			if(jsettings->tag != JSON_STRING) {
@@ -554,7 +556,6 @@ static int settings_parse(JsonNode *root) {
 		goto clear;
 	}
 #endif
-
 #endif
 clear:
 #ifdef WEBSERVER

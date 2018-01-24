@@ -22,7 +22,6 @@
 #include <dirent.h>
 #include <sys/time.h>
 #include <sys/stat.h>
-#include <sys/stat.h>
 #ifndef _WIN32
 	#ifdef __mips__
 		#define __USE_UNIX98
@@ -224,6 +223,7 @@ void protocol_register(protocol_t **proto) {
 	(*proto)->config = 1;
 	(*proto)->masterOnly = 0;
 	(*proto)->parseCode = NULL;
+	(*proto)->parseCommand = NULL;
 	(*proto)->createCode = NULL;
 	(*proto)->checkValues = NULL;
 	(*proto)->initDev = NULL;

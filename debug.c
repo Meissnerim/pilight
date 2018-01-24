@@ -26,6 +26,7 @@
 #include <time.h>
 #include <math.h>
 #include <string.h>
+#include <wiringx.h>
 
 #include "libs/pilight/core/threads.h"
 #include "libs/pilight/core/pilight.h"
@@ -44,10 +45,6 @@
 #include "libs/pilight/events/events.h"
 
 #include "libs/pilight/config/hardware.h"
-
-#ifndef _WIN32
-	#include "libs/wiringx/wiringX.h"
-#endif
 
 static unsigned short main_loop = 1;
 static unsigned short inner_loop = 1;
@@ -103,7 +100,7 @@ void *receivePulseTrain(void *param) {
 	struct hardware_t *hw = (hardware_t *)param;
 
 	while(main_loop) {
-		memset(&r.pulses, 0, MAXPULSESTREAMLENGTH);
+		memset(&r.pulses, 0, sizeof(r.pulses));
 		memset(&tm, '\0', sizeof(struct tm));
 		pulse = 0;
 		inner_loop = 1;
@@ -175,6 +172,7 @@ void *receiveOOK(void *param) {
 	int footer = 0;
 	int pulse = 0;
 	int rawLength = 0;
+	int plsdec = 1;
 
 	struct tm tm;
 	time_t now = 0, later = 0;
@@ -182,8 +180,8 @@ void *receiveOOK(void *param) {
 	struct hardware_t *hw = (hardware_t *)param;
 
 	while(main_loop) {
-		memset(&raw, '\0', MAXPULSESTREAMLENGTH);
-		memset(&pRaw, '\0', MAXPULSESTREAMLENGTH);
+		memset(&raw, '\0', sizeof(raw));
+		memset(&pRaw, '\0', sizeof(pRaw));
 		memset(&tm, '\0', sizeof(struct tm));
 		recording = 1;
 		bit = 0;
@@ -219,6 +217,7 @@ void *receiveOOK(void *param) {
 			if((duration > 5100 && footer == 0) || ((footer-(footer*0.3)<duration) && (footer+(footer*0.3)>duration))) {
 				recording = 1;
 				pulselen = (int)duration/PULSE_DIV;
+
 				/* Check if we are recording similar codes */
 				for(i=0;i<(bit-1);i++) {
 					if(!(((pRaw[i]-(pRaw[i]*0.3)) < raw[i]) && ((pRaw[i]+(pRaw[i]*0.3)) > raw[i]))) {
@@ -236,10 +235,14 @@ void *receiveOOK(void *param) {
 						if(rawLength == 0)
 							rawLength=bit;
 					}
+
+					if(pulselen > 1000) {
+						plsdec = 10;
+					}
 					/* Try to catch the footer, and the low and high values */
 					for(i=0;i<bit;i++) {
 						if((i+1)<bit && i > 2 && footer > 0) {
-							if((raw[i]/pulselen) >= 2) {
+							if((raw[i]/(pulselen/plsdec)) >= 2) {
 								pulse=raw[i];
 							}
 						}
@@ -259,7 +262,7 @@ void *receiveOOK(void *param) {
 			fflush(stdout);
 		}
 
-		if(normalize(pulse, pulselen) > 0 && rawLength > 25) {
+		if(normalize(pulse, (pulselen/plsdec)) > 0 && rawLength > 25) {
 			/* Print everything */
 			printf("--[RESULTS]--\n");
 			printf("\n");
@@ -279,13 +282,13 @@ void *receiveOOK(void *param) {
 			printf("time:\t\t%s", buf);
 #endif
 			printf("hardware:\t%s\n", hw->id);
-			printf("pulse:\t\t%d\n", normalize(pulse, pulselen));
+			printf("pulse:\t\t%d\n", normalize(pulse, (pulselen/plsdec)));
 			printf("rawlen:\t\t%d\n", rawLength);
 			printf("pulselen:\t%d\n", pulselen);
 			printf("\n");
 			printf("Raw code:\n");
 			for(i=0;i<rawLength;i++) {
-				printf("%d ",normalize(raw[i], pulselen)*pulselen);
+				printf("%d ",normalize(raw[i], (pulselen/plsdec))*(pulselen/plsdec));
 			}
 			printf("\n");
 		}
@@ -323,10 +326,6 @@ int main(int argc, char **argv) {
 	log_shell_enable();
 	log_file_disable();
 	log_level_set(LOG_NOTICE);
-
-#ifndef _WIN32
-	wiringXLog = logprintf;
-#endif
 
 	struct options_t *options = NULL;
 
@@ -416,7 +415,7 @@ int main(int argc, char **argv) {
 	}
 
 	printf("Press and hold one of the buttons on your remote or wait until\n");
-	printf("another device such as a weather station has send new codes\n");
+	printf("another device such as a weather station has sent new codes\n");
 	printf("The debugger will automatically reset itself after one second of\n");
 	printf("failed leads. It will keep running until you explicitly stop it.\n");
 	printf("This is done by pressing both the [CTRL] and C buttons on your keyboard.\n");

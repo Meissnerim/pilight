@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 2.8.8)
 include(CMakeConfig.txt)
 
 project(pilight)
-set(VERSION 7.0)
+set(VERSION 8.0.9)
 
 set(MODULESPACK OFF)
 set(CMAKE_BUILD_TYPE Debug)
@@ -59,9 +59,9 @@ endif()
 
 set(CMAKE_SKIP_RPATH TRUE)
 if(NOT WIN32)
-	set(CMAKE_EXE_LINKER_FLAGS "  -Wl,-rpath=/usr/local/lib/,-rpath=/usr/lib/,-rpath=/lib/")
-	set(CMAKE_SHARED_LINKER_FLAGS " -Wl,-rpath=/usr/local/lib/,-rpath=/usr/lib/,-rpath=/lib/")
-	set(CMAKE_MODULE_LINKER_FLAGS " -Wl,-rpath=/usr/local/lib/,-rpath=/usr/lib/,-rpath=/lib/")
+	set(CMAKE_EXE_LINKER_FLAGS "  -Wl,-rpath=.,-rpath=/usr/local/lib/,-rpath=/usr/lib/,-rpath=/lib/")
+	set(CMAKE_SHARED_LINKER_FLAGS " -Wl,-rpath=.,-rpath=/usr/local/lib/,-rpath=/usr/lib/,-rpath=/lib/")
+	set(CMAKE_MODULE_LINKER_FLAGS " -Wl,-rpath=.,-rpath=/usr/local/lib/,-rpath=/usr/lib/,-rpath=/lib/")
 endif()
 
 if(NOT WIN32)
@@ -119,6 +119,9 @@ execute_process(COMMAND git describe --always
 string(REGEX REPLACE "\n" "" git_ver "${git_ver}")
 add_definitions(-DHASH="${git_ver}")
 
+file(MD5 ${PROJECT_SOURCE_DIR}/res/pilight.pem md5sum)
+add_definitions(-DPILIGHT_PEM_MD5="${md5sum}")
+
 if(${MODULESPACK} MATCHES "ON" AND NOT WIN32)
 	add_definitions(-DMODULE="1")
 endif()
@@ -141,6 +144,7 @@ if(NOT WIN32)
 				/usr/local/lib64
 				/usr/lib/arm-linux-gnueabi
 				/usr/lib/arm-linux-gnueabihf
+				/usr/lib/aarch64-linux-gnu
 			NO_DEFAULT_PATH)	
 
 		if(${CMAKE_PCAP_LIBS_INIT} MATCHES "CMAKE_PCAP_LIBS_INIT-NOTFOUND")
@@ -148,78 +152,6 @@ if(NOT WIN32)
 		else()
 			message(STATUS "Looking for libpcap - found (${CMAKE_PCAP_LIBS_INIT})")
 		endif()
-	endif()
-
-	if(${WEBSERVER_SSL} MATCHES "ON")
-		set(CMAKE_SSL_LIBS_INIT)
-
-		find_library(CMAKE_SSL_LIBS_INIT
-			NAME ssl
-			PATHS
-				${CROSS_COMPILE_LIBS}
-				/usr/lib
-				/usr/lib32
-				/usr/lib64
-				/usr/lib/i386-linux-gnu		
-				/usr/lib/x86_64-linux-gnu
-				/usr/local/lib
-				/usr/local/lib32
-				/usr/local/lib64
-				/usr/lib/arm-linux-gnueabi
-				/usr/lib/arm-linux-gnueabihf
-			NO_DEFAULT_PATH)	
-
-		if(${CMAKE_SSL_LIBS_INIT} MATCHES "CMAKE_SSL_LIBS_INIT-NOTFOUND")
-			message(FATAL_ERROR "Looking for libssl - not found")
-		else()
-			message(STATUS "Looking for libssl - found (${CMAKE_SSL_LIBS_INIT})")
-		endif()
-		
-		set(CMAKE_CRYPTO_LIBS_INIT)
-
-		find_library(CMAKE_CRYPTO_LIBS_INIT
-			NAME crypto
-			PATHS
-				${CROSS_COMPILE_LIBS}
-				/usr/lib
-				/usr/lib32
-				/usr/lib64
-				/usr/lib/i386-linux-gnu		
-				/usr/lib/x86_64-linux-gnu
-				/usr/local/lib
-				/usr/local/lib32
-				/usr/local/lib64
-				/usr/lib/arm-linux-gnueabi
-				/usr/lib/arm-linux-gnueabihf
-			NO_DEFAULT_PATH)	
-
-		if(${CMAKE_CRYPTO_LIBS_INIT} MATCHES "CMAKE_CRYPTO_LIBS_INIT-NOTFOUND")
-			message(FATAL_ERROR "Looking for libcrypto - not found")
-		else()
-			message(STATUS "Looking for libcrypto - found (${CMAKE_CRYPTO_LIBS_INIT})")
-		endif()
-
-		find_library(CMAKE_ZLIB_LIBS_INIT
-			NAME z
-			PATHS
-				${CROSS_COMPILE_LIBS}
-				/usr/lib
-				/usr/lib32
-				/usr/lib64
-				/usr/lib/i386-linux-gnu		
-				/usr/lib/x86_64-linux-gnu
-				/usr/local/lib
-				/usr/local/lib32
-				/usr/local/lib64
-				/usr/lib/arm-linux-gnueabi
-				/usr/lib/arm-linux-gnueabihf
-			NO_DEFAULT_PATH)	
-
-		if(${CMAKE_ZLIB_LIBS_INIT} MATCHES "CMAKE_ZLIB_LIBS_INIT-NOTFOUND")
-			message(FATAL_ERROR "Looking for libz - not found")
-		else()
-			message(STATUS "Looking for libz - found (${CMAKE_ZLIB_LIBS_INIT})")
-		endif()	
 	endif()
 
 	set(CMAKE_UNWIND_LIBS_INIT)
@@ -239,6 +171,7 @@ if(NOT WIN32)
 			/usr/local/lib64
 			/usr/lib/arm-linux-gnueabi
 			/usr/lib/arm-linux-gnueabihf
+			/usr/lib/aarch64-linux-gnu
 		NO_DEFAULT_PATH)
 
 		if(${CMAKE_UNWIND_LIBS_INIT} MATCHES "CMAKE_UNWIND_LIBS_INIT-NOTFOUND")
@@ -247,10 +180,102 @@ if(NOT WIN32)
 			message(STATUS "Looking for libunwind - found (${CMAKE_UNWIND_LIBS_INIT})")
 		endif()
 	endif()
-	
+
+	find_library(CMAKE_WIRINGX_LIBS_INIT
+		NAME wiringx
+		PATHS
+			${CROSS_COMPILE_LIBS}
+			/usr/lib
+			/usr/lib32
+			/usr/lib64
+			/usr/lib/i386-linux-gnu
+			/usr/lib/x86_64-linux-gnu
+			/usr/local/lib
+			/usr/local/lib32
+			/usr/local/lib64
+			/usr/lib/arm-linux-gnueabi
+			/usr/lib/arm-linux-gnueabihf
+			/usr/lib/aarch64-linux-gnu
+		NO_DEFAULT_PATH)
+
+	if(${CMAKE_WIRINGX_LIBS_INIT} MATCHES "CMAKE_WIRINGX_LIBS_INIT-NOTFOUND")
+		message(FATAL_ERROR "Looking for libwiringx - not found")
+	else()
+		message(STATUS "Looking for libwiringx - found (${CMAKE_WIRINGX_LIBS_INIT})")
+	endif()
+
+	find_library(CMAKE_MBEDTLS_LIBS_INIT
+		NAME mbedtls
+		PATHS
+			${CROSS_COMPILE_LIBS}
+			/usr/lib
+			/usr/lib32
+			/usr/lib64
+			/usr/lib/i386-linux-gnu
+			/usr/lib/x86_64-linux-gnu
+			/usr/local/lib
+			/usr/local/lib32
+			/usr/local/lib64
+			/usr/lib/arm-linux-gnueabi
+			/usr/lib/arm-linux-gnueabihf
+			/usr/lib/aarch64-linux-gnu
+		NO_DEFAULT_PATH)
+
+	if(${CMAKE_MBEDTLS_LIBS_INIT} MATCHES "CMAKE_MBEDTLS_LIBS_INIT-NOTFOUND")
+		message(FATAL_ERROR "Looking for libmbedtls - not found")
+	else()
+		message(STATUS "Looking for libmbedtls - found (${CMAKE_MBEDTLS_LIBS_INIT})")
+	endif()
+
+	find_library(CMAKE_MBEDCRYPTO_LIBS_INIT
+		NAME mbedcrypto
+		PATHS
+			${CROSS_COMPILE_LIBS}
+			/usr/lib
+			/usr/lib32
+			/usr/lib64
+			/usr/lib/i386-linux-gnu
+			/usr/lib/x86_64-linux-gnu
+			/usr/local/lib
+			/usr/local/lib32
+			/usr/local/lib64
+			/usr/lib/arm-linux-gnueabi
+			/usr/lib/arm-linux-gnueabihf
+			/usr/lib/aarch64-linux-gnu
+		NO_DEFAULT_PATH)
+
+	if(${CMAKE_MBEDCRYPTO_LIBS_INIT} MATCHES "CMAKE_MBEDCRYPTO_LIBS_INIT-NOTFOUND")
+		message(FATAL_ERROR "Looking for libmbedcrypto - not found")
+	else()
+		message(STATUS "Looking for libmbedcrypto - found (${CMAKE_MBEDCRYPTO_LIBS_INIT})")
+	endif()
+
+	find_library(CMAKE_MBEDX509_LIBS_INIT
+		NAME mbedx509
+		PATHS
+			${CROSS_COMPILE_LIBS}
+			/usr/lib
+			/usr/lib32
+			/usr/lib64
+			/usr/lib/i386-linux-gnu
+			/usr/lib/x86_64-linux-gnu
+			/usr/local/lib
+			/usr/local/lib32
+			/usr/local/lib64
+			/usr/lib/arm-linux-gnueabi
+			/usr/lib/arm-linux-gnueabihf
+			/usr/lib/aarch64-linux-gnu
+		NO_DEFAULT_PATH)
+
+	if(${CMAKE_MBEDX509_LIBS_INIT} MATCHES "CMAKE_MBEDX509_LIBS_INIT-NOTFOUND")
+		message(FATAL_ERROR "Looking for libmbedx509 - not found")
+	else()
+		message(STATUS "Looking for libmbedx509 - found (${CMAKE_MBEDX509_LIBS_INIT})")
+	endif()
 endif()
 
 include_directories(${PROJECT_SOURCE_DIR}/inc)
+include_directories(${PROJECT_SOURCE_DIR}/libs/libuv)
 include_directories(/usr/local/include/)
 
 add_subdirectory(inc)
@@ -281,8 +306,8 @@ if(${MODULESPACK} MATCHES "OFF" OR WIN32)
 	add_library(${PROJECT_NAME} OBJECT ${libs_files})
 	set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
-	add_library(${PROJECT_NAME}_shared STATIC $<TARGET_OBJECTS:${PROJECT_NAME}>)
-	add_library(${PROJECT_NAME}_static SHARED $<TARGET_OBJECTS:${PROJECT_NAME}>)
+	add_library(${PROJECT_NAME}_shared SHARED $<TARGET_OBJECTS:${PROJECT_NAME}>)
+	add_library(${PROJECT_NAME}_static STATIC $<TARGET_OBJECTS:${PROJECT_NAME}>)
 
 	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_THREAD_LIBS_INIT})
 	if(WIN32)
@@ -308,6 +333,10 @@ if(${MODULESPACK} MATCHES "OFF" OR WIN32)
 		target_link_libraries(${PROJECT_NAME}_shared rt)
 	endif()
 	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_DL_LIBS})
+	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_WIRINGX_LIBS_INIT})
+	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_MBEDTLS_LIBS_INIT})
+	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_MBEDCRYPTO_LIBS_INIT})
+	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_MBEDX509_LIBS_INIT})
 
 	target_link_libraries(${PROJECT_NAME}_static ${CMAKE_THREAD_LIBS_INIT})
 	target_link_libraries(${PROJECT_NAME}_static m)
@@ -318,21 +347,16 @@ if(${MODULESPACK} MATCHES "OFF" OR WIN32)
 		target_link_libraries(${PROJECT_NAME}_static rt)
 	endif()
 	target_link_libraries(${PROJECT_NAME}_static ${CMAKE_DL_LIBS})
-
+	target_link_libraries(${PROJECT_NAME}_static ${CMAKE_WIRINGX_LIBS_INIT})
+	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_MBEDTLS_LIBS_INIT})
+	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_MBEDCRYPTO_LIBS_INIT})
+	target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_MBEDX509_LIBS_INIT})
+	
 	if(${PROTOCOL_ARPING} MATCHES "ON")
 		target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_PCAP_LIBS_INIT})
 		target_link_libraries(${PROJECT_NAME}_static ${CMAKE_PCAP_LIBS_INIT})
 	endif()
 
-	if(${WEBSERVER_SSL} MATCHES "ON")
-		target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_SSL_LIBS_INIT})
-		target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_CRYPTO_LIBS_INIT})
-		target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_ZLIB_LIBS_INIT})
-		target_link_libraries(${PROJECT_NAME}_static ${CMAKE_SSL_LIBS_INIT})
-		target_link_libraries(${PROJECT_NAME}_static ${CMAKE_CRYPTO_LIBS_INIT})
-		target_link_libraries(${PROJECT_NAME}_static ${CMAKE_ZLIB_LIBS_INIT})
-	endif()
-		
 	if(NOT WIN32)
 		target_link_libraries(${PROJECT_NAME}_shared ${CMAKE_UNWIND_LIBS_INIT})
 		target_link_libraries(${PROJECT_NAME}_static ${CMAKE_UNWIND_LIBS_INIT})
@@ -342,9 +366,9 @@ if(${MODULESPACK} MATCHES "OFF" OR WIN32)
 
 	if(NOT WIN32)
 		install(CODE "execute_process(COMMAND rm /usr/local/lib/lib${PROJECT_NAME}.so)")
-		install(FILES ${CMAKE_BINARY_DIR}/lib${PROJECT_NAME}.so DESTINATION lib/${PROJECT_NAME}/ RENAME lib${PROJECT_NAME}.so.${VERSION} COMPONENT ${PROJECT_NAME})
-		install(FILES ${CMAKE_BINARY_DIR}/lib${PROJECT_NAME}.a DESTINATION lib/${PROJECT_NAME}/ RENAME lib${PROJECT_NAME}.a COMPONENT ${PROJECT_NAME})
-		install(CODE "execute_process(COMMAND ln -s \"/usr/local/lib/${PROJECT_NAME}/lib${PROJECT_NAME}.so.${VERSION}\" \"/usr/local/lib/lib${PROJECT_NAME}.so\")")	
+		install(FILES ${CMAKE_BINARY_DIR}/lib${PROJECT_NAME}.so DESTINATION lib RENAME lib${PROJECT_NAME}.so.${VERSION} COMPONENT ${PROJECT_NAME})
+		install(FILES ${CMAKE_BINARY_DIR}/lib${PROJECT_NAME}.a DESTINATION lib RENAME lib${PROJECT_NAME}.a COMPONENT ${PROJECT_NAME})
+		install(CODE "execute_process(COMMAND ln -s \"/usr/local/lib/lib${PROJECT_NAME}.so.${VERSION}\" \"/usr/local/lib/lib${PROJECT_NAME}.so\")")
 
 		if(EXISTS "/usr/local/lib/${PROJECT_NAME}/protocols")
 			install(CODE "execute_process(COMMAND find /usr/local/lib/${PROJECT_NAME}/protocols/ -type f -exec rm {} \\;)")
@@ -363,20 +387,20 @@ if(${MODULESPACK} MATCHES "OFF" OR WIN32)
 			install(CODE "execute_process(COMMAND mv /etc/${PROJECT_NAME}/config.json /etc/${PROJECT_NAME}/config.json.bak)")
 		endif()
 
-		install(PROGRAMS ${PROJECT_SOURCE_DIR}/res/init/${PROJECT_NAME}.initd DESTINATION /etc/init.d/ RENAME ${PROJECT_NAME})
+		install(PROGRAMS ${PROJECT_SOURCE_DIR}/res/init/${PROJECT_NAME}.sysv DESTINATION /etc/init.d/ RENAME ${PROJECT_NAME})
+		install(PROGRAMS ${PROJECT_SOURCE_DIR}/res/init/${PROJECT_NAME}.systemd DESTINATION etc/systemd/system/ RENAME ${PROJECT_NAME}.service)
+		install(PROGRAMS ${PROJECT_SOURCE_DIR}/res/init/${PROJECT_NAME}.upstart DESTINATION /etc/init/ RENAME ${PROJECT_NAME}.conf)
 		install(FILES ${PROJECT_SOURCE_DIR}/res/config/config.json-default DESTINATION /etc/${PROJECT_NAME}/ RENAME config.json COMPONENT ${PROJECT_NAME})
-		install(FILES ${PROJECT_SOURCE_DIR}/res/tzdata.json DESTINATION /etc/${PROJECT_NAME}/ COMPONENT ${PROJECT_NAME})
 	else()
 		install(FILES ${CMAKE_BINARY_DIR}/lib${PROJECT_NAME}.dll DESTINATION . RENAME lib${PROJECT_NAME}.dll COMPONENT ${PROJECT_NAME})
 		install(FILES ${PROJECT_SOURCE_DIR}/res/config/config.json-default-w32 DESTINATION . RENAME config.json-default COMPONENT ${PROJECT_NAME})
-		install(FILES ${PROJECT_SOURCE_DIR}/res/tzdata.json DESTINATION . COMPONENT ${PROJECT_NAME})
 	endif()
 
 	if(${WEBSERVER} MATCHES "ON")
 		if(WIN32)
 			install(DIRECTORY ${PROJECT_SOURCE_DIR}/libs/webgui/ DESTINATION web/ COMPONENT webgui)
 		else()
-			install(DIRECTORY ${PROJECT_SOURCE_DIR}/libs/webgui/ DESTINATION /usr/local/share/${PROJECT_NAME} COMPONENT webgui)
+			install(DIRECTORY ${PROJECT_SOURCE_DIR}/libs/webgui/ DESTINATION /usr/local/share/${PROJECT_NAME}/webgui COMPONENT webgui)
 		endif()
 	endif()	
 
