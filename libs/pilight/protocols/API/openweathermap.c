@@ -414,7 +414,7 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 								struct tm *tmp = gmtime(&timenow);
 								memcpy(&current, tmp, sizeof(struct tm));
 #else
-								gmtime_r(&timenow, &current);
+								localtime_r(&timenow, &current);
 #endif
 
 								int month = current.tm_mon+1;
@@ -443,6 +443,8 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 								int hournow = (int)round((current.tm_hour*100)+current.tm_min);
 								int hourrise = (int)round((tm_rise.tm_hour*100)+tm_rise.tm_min);
 								int hourset = (int)round((tm_set.tm_hour*100)+tm_set.tm_min);
+
+								logprintf(LOG_DEBUG, "OpenWM times: current %d, rise %d, set %d ", hournow, hourrise, hourset);
 								
 								if(hournow > hourrise && hournow < hourset) {
 									_sun = "rise";
