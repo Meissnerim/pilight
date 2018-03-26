@@ -75,9 +75,11 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 	struct JsonNode *jdata = NULL;
 	struct JsonNode *jmain = NULL;
 	struct JsonNode *jsys = NULL;
+	struct JsonNode *jcoord = NULL;
 	struct JsonNode *node = NULL;
-	double temp = 0, sunrise = 0, sunset = 0, humi = 0;
+	double temp = 0, sunrise = 0, sunset = 0, humi = 0, lat = 0, lon = 0;
 	struct settings_t *wnode = userdata;
+	char UTC[] = "UTC", *tz = NULL; 
 
 	time_t timenow = 0;
 	struct tm tm;
@@ -87,7 +89,8 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 			if(json_validate(data) == true) {
 				if((jdata = json_decode(data)) != NULL) {
 					if((jmain = json_find_member(jdata, "main")) != NULL
-						 && (jsys = json_find_member(jdata, "sys")) != NULL) {
+						 && (jsys = json_find_member(jdata, "sys")) != NULL
+						 && (jcoord = json_find_member(jdata, "coord")) != NULL) {
 						if((node = json_find_member(jmain, "temp")) == NULL) {
 							printf("api.openweathermap.org json has no temp key");
 						} else if(json_find_number(jmain, "humidity", &humi) != 0) {
@@ -96,6 +99,10 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 							printf("api.openweathermap.org json has no sunrise key");
 						} else if(json_find_number(jsys, "sunset", &sunset) != 0) {
 							printf("api.openweathermap.org json has no sunset key");
+						} else if(json_find_number(jcoord, "lon", &lon) != 0) {
+							printf("api.openweathermap.org json has no lon key");
+						} else if(json_find_number(jcoord, "lat", &lat) != 0) {
+							printf("api.openweathermap.org json has no lat key");
 						} else {
 							if(node->tag != JSON_NUMBER) {
 								printf("api.openweathermap.org json has no temp key");
@@ -116,6 +123,14 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 								int year = current.tm_year+1900;
 
 								time_t midnight = (datetime2ts(year, month, mday, 23, 59, 59)+1);
+								
+								if((tz = coord2tz(lon, lat)) == NULL) {
+									logprintf(LOG_DEBUG, "could not determine timezone");
+									tz = UTC;
+								} else {
+									logprintf(LOG_DEBUG, "%.6f:%.6f seems to be in timezone: %s", lat, lon, tz);
+								}
+
 
 								openweathermap->message = json_mkobject();
 
@@ -129,22 +144,22 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 
 								time_t a = (time_t)sunrise;
 								memset(&tm, '\0', sizeof(struct tm));
-	#ifdef _WIN32
-								localtime(&a);
-	#else
-								localtime_r(&a, &tm);
-	#endif
+
+								localtime_l(a, &tm, tz);
 								json_append_member(code, "sunrise", json_mknumber((double)((tm.tm_hour*100)+tm.tm_min)/100, 2));
 
 								a = (time_t)sunset;
 								memset(&tm, '\0', sizeof(struct tm));
-	#ifdef _WIN32
-								localtime(&a);
-	#else
-								localtime_r(&a, &tm);
-	#endif
+
+								localtime_l(a, &tm, tz);
 								json_append_member(code, "sunset", json_mknumber((double)((tm.tm_hour*100)+tm.tm_min)/100, 2));
-								if(timenow > (int)round(sunrise) && timenow < (int)round(sunset)) {
+								
+								
+								int hournow = (int)round((current.tm_hour*100)+current.tm_min);
+								int hourrise = (int)round((tm_rise.tm_hour*100)+tm_rise.tm_min);
+								int hourset = (int)round((tm_set.tm_hour*100)+tm_set.tm_min);
+								
+								if(hournow > hourrise && hournow < hourset) {
 									json_append_member(code, "sun", json_mkstring("rise"));
 								} else {
 									json_append_member(code, "sun", json_mkstring("set"));
@@ -161,14 +176,14 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 								openweathermap->message = NULL;
 
 								/* Send message when sun rises */
-								if((int)round(sunrise) > timenow) {
-									if(((int)round(sunrise)-timenow) < wnode->ointerval) {
-										wnode->interval = (int)((int)round(sunrise)-timenow);
+								if((int)round(hourrise) > hournow) {
+									if(((int)round(hourrise)-hournow)*60 < wnode->ointerval) {
+										wnode->interval = (int)((int)round(hourrise)-hournow)*60;
 									}
 								/* Send message when sun sets */
-								} else if((int)round(sunset) > timenow) {
-									if(((int)round(sunset)-timenow) < wnode->ointerval) {
-										wnode->interval = (int)((int)round(sunset)-timenow);
+								} else if((int)round(hourset) > hournow) {
+									if(((int)round(hourset)-hournow)*60 < wnode->ointerval) {
+										wnode->interval = (int)((int)round(hourset)-hournow)*60;
 									}
 								/* Update all values when a new day arrives */
 								} else {
@@ -351,11 +366,13 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 	struct JsonNode *jdata = NULL;
 	struct JsonNode *jmain = NULL;
 	struct JsonNode *jsys = NULL;
+	struct JsonNode *jcoord = NULL;
 	struct JsonNode *node = NULL;
 	struct data_t *settings = userdata;
 	time_t timenow = 0;
 	struct tm tm_rise, tm_set;
-	double sunset = 0.0, sunrise = 0.0, temp = 0.0, humi = 0.0;
+	double temp = 0, sunrise = 0, sunset = 0, humi = 0, lat = 0, lon = 0;
+	char UTC[] = "UTC", *tz = NULL; 
 
 	memset(&tm_rise, 0, sizeof(struct tm));
 	memset(&tm_set, 0, sizeof(struct tm));
@@ -365,7 +382,8 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 			if(json_validate(data) == true) {
 				if((jdata = json_decode(data)) != NULL) {
 					if((jmain = json_find_member(jdata, "main")) != NULL
-						 && (jsys = json_find_member(jdata, "sys")) != NULL) {
+						 && (jsys = json_find_member(jdata, "sys")) != NULL
+						 && (jcoord = json_find_member(jdata, "coord")) != NULL) {
 						if((node = json_find_member(jmain, "temp")) == NULL) {
 							logprintf(LOG_NOTICE, "api.openweathermap.org json has no temp key");
 						} else if(json_find_number(jmain, "humidity", &humi) != 0) {
@@ -374,6 +392,10 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 							logprintf(LOG_NOTICE, "api.openweathermap.org json has no sunrise key");
 						} else if(json_find_number(jsys, "sunset", &sunset) != 0) {
 							logprintf(LOG_NOTICE, "api.openweathermap.org json has no sunset key");
+						} else if(json_find_number(jcoord, "lon", &lon) != 0) {
+							logprintf(LOG_NOTICE, "api.openweathermap.org json has no lon key");
+						} else if(json_find_number(jcoord, "lat", &lat) != 0) {
+							logprintf(LOG_NOTICE, "api.openweathermap.org json has no lat key");
 						} else {
 							if(node->tag != JSON_NUMBER) {
 								logprintf(LOG_NOTICE, "api.openweathermap.org json has no temp key");
@@ -392,7 +414,7 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 								struct tm *tmp = gmtime(&timenow);
 								memcpy(&current, tmp, sizeof(struct tm));
 #else
-								gmtime_r(&timenow, &current);
+								localtime_r(&timenow, &current);
 #endif
 
 								int month = current.tm_mon+1;
@@ -401,25 +423,30 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 
 								time_t midnight = (datetime2ts(year, month, mday, 23, 59, 59)+1);
 
+								if((tz = coord2tz(lon, lat)) == NULL) {
+									logprintf(LOG_DEBUG, "could not determine timezone");
+									tz = UTC;
+								} else {
+									logprintf(LOG_DEBUG, "%.6f:%.6f seems to be in timezone: %s", lat, lon, tz);
+								}
+
 								char *_sun = NULL;
 
 								time_t a = (time_t)sunrise;
 								memset(&tm_rise, '\0', sizeof(struct tm));
-#ifdef _WIN32
-								tmp = gmtime(&a);
-								memcpy(&tm_rise, tmp, sizeof(struct tm));
-#else
-								gmtime_r(&a, &tm_rise);
-#endif
+								localtime_l(a, &tm_rise, tz);
+
 								a = (time_t)sunset;
 								memset(&tm_set, '\0', sizeof(struct tm));
-#ifdef _WIN32
-								tmp = gmtime(&a);
-								memcpy(&tm_set, tmp, sizeof(struct tm));
-#else
-								gmtime_r(&a, &tm_set);
-#endif
-								if(timenow > (int)round(sunrise) && timenow < (int)round(sunset)) {
+								localtime_l(a, &tm_set, tz);
+
+								int hournow = (int)round((current.tm_hour*100)+current.tm_min);
+								int hourrise = (int)round((tm_rise.tm_hour*100)+tm_rise.tm_min);
+								int hourset = (int)round((tm_set.tm_hour*100)+tm_set.tm_min);
+
+								logprintf(LOG_DEBUG, "OpenWM times: current %d, rise %d, set %d ", hournow, hourrise, hourset);
+								
+								if(hournow > hourrise && hournow < hourset) {
 									_sun = "rise";
 								} else {
 									_sun = "set";
@@ -462,14 +489,14 @@ static void callback(int code, char *data, int size, char *type, void *userdata)
 								openweathermap->message = NULL;
 #endif
 								/* Send message when sun rises */
-								if((int)round(sunrise) > timenow) {
-									if(((int)round(sunrise)-timenow) < settings->interval) {
-										settings->interval = (int)((int)round(sunrise)-timenow);
+								if((int)round(hourrise) > hournow) {
+									if(((int)round(hourrise)-hournow)*60 < settings->interval) {
+										settings->interval = (int)((int)round(hourrise)-hournow)*60;
 									}
 								/* Send message when sun sets */
-								} else if((int)round(sunset) > timenow) {
-									if(((int)round(sunset)-timenow) < settings->interval) {
-										settings->interval = (int)((int)round(sunset)-timenow);
+								} else if((int)round(hourset) > hournow) {
+									if(((int)round(hourset)-hournow)*60 < settings->interval) {
+										settings->interval = (int)((int)round(hourset)-hournow)*60;
 									}
 								/* Update all values when a new day arrives */
 								} else {
@@ -907,7 +934,7 @@ void openweathermapInit(void) {
 
 	options_add(&openweathermap->options, 't', "temperature", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "^[0-9]{1,5}$");
 	options_add(&openweathermap->options, 'h', "humidity", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "^[0-9]{1,5}$");
-	options_add(&openweathermap->options, 'l', "location", OPTION_HAS_VALUE, DEVICES_ID, JSON_STRING, NULL, "^([a-zA-Z-]|[[:space:]])+$");
+	options_add(&openweathermap->options, 'l', "location", OPTION_HAS_VALUE, DEVICES_ID, JSON_STRING, NULL, "^.+$");
 	options_add(&openweathermap->options, 'c', "country", OPTION_HAS_VALUE, DEVICES_ID, JSON_STRING, NULL, "^[a-zA-Z]+$");
 	options_add(&openweathermap->options, 'a', "api", OPTION_HAS_VALUE, DEVICES_ID, JSON_STRING, NULL, "^[a-zA-Z0-9]+$");
 	options_add(&openweathermap->options, 'x', "sunrise", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "^[0-9]{3,4}$");
