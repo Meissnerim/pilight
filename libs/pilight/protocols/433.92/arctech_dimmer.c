@@ -133,7 +133,7 @@ static void clearCode(void) {
 
 static void createStart(void) {
 	arctech_dimmer->raw[0]=AVG_PULSE_LENGTH;
-	arctech_dimmer->raw[1]=(10*AVG_PULSE_LENGTH);
+	arctech_dimmer->raw[1]=(9*AVG_PULSE_LENGTH);
 }
 
 static void createId(int id) {
